@@ -33,6 +33,50 @@ struct pixel add(struct pixel p1, struct pixel p2) {
  *
  */
 struct image* apply_kernel(struct image* img, int* kernel, int ksize, float normalize) {
+    struct image* output = malloc(sizeof(struct image));
 
+    output->width = img->width;
+    output->height = img->height;
+
+    output->pixels = calloc(
+        img->width * img->height,
+        sizeof(struct pixel)
+    );
+
+    int offset = ksize / 2;
+
+    for (int y = 0; y < img->height; y++) {
+        for (int x = 0; x < img->width; x++) {
+
+            struct pixel sum = {0, 0, 0};
+
+            for (int ky = 0; ky < ksize; ky++) {
+                for (int kx = 0; kx < ksize; kx++) {
+
+                    int image_x = x + kx - offset;
+                    int image_y = y + ky - offset;
+
+                    // Zero padding: ignore pixels outside the image.
+                    if (image_x < 0 || image_x >= img->width ||
+                        image_y < 0 || image_y >= img->height) {
+                        continue;
+                    }
+
+                    struct pixel p =
+                        img->pixels[image_y * img->width + image_x];
+
+                    int weight = kernel[ky * ksize + kx];
+
+                    sum = add(sum, mul(p, weight));
+                }
+            }
+
+            sum = mul(sum, normalize);
+
+            output->pixels[y * output->width + x] = sum;
+        }
+    }
+
+    return output;
 }
 
