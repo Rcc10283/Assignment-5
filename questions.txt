@@ -1,0 +1,4 @@
+(1) 402,771,968 bytes of unique memory
+(2) 189,691,904 bytes of unique memory
+(3) mmap reduced memory usage by allowing processes to share the input image instead of each storing a separate copy.
+(4) Minor page faults do not require disk I/O, while major page faults require loading data from disk.

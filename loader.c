@@ -1,7 +1,7 @@
 #include "loader.h"
 #include <sys/mman.h>
 #include <errno.h>
-
+#include <string.h>
 
 /*
  * Loads an image from a raw image file using memory-mapped I/O.
@@ -27,7 +27,52 @@
  * Returns 0 on success, or -1 if the file cannot be opened or mapped.
  */
 int loadimage_mmap(char* filename, struct image* image) {
-	return 0;
+    int fd = open(filename, O_RDONLY);
+
+    if (fd == -1) {
+        perror("open");
+        return -1;
+    }
+
+    /*
+     * The caller supplies the expected width/height, which lets us
+     * determine how large the mapping should be.
+     */
+    size_t size = sizeof(struct image) +
+                  (image->width * image->height * sizeof(struct pixel));
+
+    void* mapping = mmap(
+        NULL,
+        size,
+        PROT_READ,
+        MAP_SHARED,
+        fd,
+        0
+    );
+
+    if (mapping == MAP_FAILED) {
+        perror("mmap");
+        close(fd);
+        return -1;
+    }
+
+    /*
+     * Copy the stored image header.
+     */
+    struct image* mapped_image = (struct image*)mapping;
+
+    image->width = mapped_image->width;
+    image->height = mapped_image->height;
+
+    /*
+     * Pixels begin immediately after the image header.
+     * Do NOT malloc/copy them.
+     */
+    image->pixels = (struct pixel*)((char*)mapping + sizeof(struct image));
+
+    close(fd);
+
+    return 0;
 }
 
 /*
@@ -47,7 +92,75 @@ int loadimage_mmap(char* filename, struct image* image) {
  * A failed flush to disk is reported but still returns 0.
  */
 int saveimage_mmap(char* filename, struct image* image) {
-	return 0;
+    int fd = open(
+        filename,
+        O_RDWR | O_CREAT | O_TRUNC,
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH
+    );
+
+    if (fd == -1) {
+        perror("open");
+        return -1;
+    }
+
+    size_t pixel_size =
+        image->width * image->height * sizeof(struct pixel);
+
+    size_t total_size =
+        sizeof(struct image) + pixel_size;
+
+    /*
+     * Make the file large enough for the header and pixels.
+     */
+    if (ftruncate(fd, total_size) == -1) {
+        perror("ftruncate");
+        close(fd);
+        return -1;
+    }
+
+    void* mapping = mmap(
+        NULL,
+        total_size,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        fd,
+        0
+    );
+
+    if (mapping == MAP_FAILED) {
+        perror("mmap");
+        close(fd);
+        return -1;
+    }
+
+    /*
+     * Store the image header first.
+     */
+    memcpy(mapping, image, sizeof(struct image));
+
+    /*
+     * Store the pixels immediately after the header.
+     */
+    void* pixel_destination =
+        (char*)mapping + sizeof(struct image);
+
+    memcpy(
+        pixel_destination,
+        image->pixels,
+        pixel_size
+    );
+
+    /*
+     * Synchronize the mapped data with the file.
+     */
+    if (msync(mapping, total_size, MS_SYNC) == -1) {
+        perror("msync");
+    }
+
+    munmap(mapping, total_size);
+    close(fd);
+
+    return 0;
 }
 
 
